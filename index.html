@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Basic Bootstrap Template</title>
+    <!-- Bootstrap CSS -->
+    <style>
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@600;700&display=swap');
+
+.heading {
+    text-align: center;
+    padding-top:1em;
+    padding-bottom: 0.5em;
+}
+
+html {
+    background: #E7F3F1;
+        -webkit-background-size: cover;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: cover;
+    -moz-background-size: cover;
+}
+
+body {
+    height: 100%;
+    font-family: 'Open Sans', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.page-contain {
+  display: flex;
+  justify-content: center;
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    flex-direction: row;
+    gap: 8px;
+}
+
+.tag {
+    order: 0;
+    padding: 8px;
+    border-radius: 8px;
+
+    background-color: black;
+    color: white;
+}
+
+.tag.tag-meta {
+    order: -10;
+}
+
+.tag.tag-important {
+    order: -90;
+}
+
+.tag.tag-next {
+    order: -99;
+}
+
+.tag.tag-clean {
+    order: 99;
+}
+
+.data-card.next { border: .1em solid red; }
+.data-card.started { border: .3em solid green; }
+
+.data-card {
+  display: flex;
+  flex-direction: column;
+  max-width: 20.75em;
+  min-height: 20.75em;
+  overflow: hidden;
+  border-radius: .5em;
+  text-decoration: none;
+  background: white;
+
+  margin: 0.5em;
+
+  padding-top: 0.5em;
+  padding-bottom: 1em;
+  padding-left: 1em;
+  padding-right: 1em;
+
+
+  box-shadow: 0 1.5em 2.5em -.5em rgba(#000000, .1);
+  transition: transform .45s ease, background .45s ease;
+
+  border: .1em solid grey;
+  
+  h3 {
+
+    font-size: 3.5em;
+    font-weight: 600;
+    line-height: 1;
+    padding-bottom: .5em;
+    margin: 0 0 0.142857143em;
+    border-bottom: 2px solid #753BBD;
+    transition: color .45s ease, border .45s ease;
+  }
+
+  h4 {
+
+    text-transform: uppercase;
+    font-size: 1.125em;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.1em;
+    margin: 0 0 1.777777778em;
+    transition: color .45s ease;
+  }
+
+  p {
+    opacity: 0;
+    color: #FFFFFF;
+    font-weight: 600;
+    line-height: 1.8;
+    margin: 0 0 1.25em;
+    transform: translateY(-1em);
+    transition: opacity .45s ease, transform .5s ease;
+  }
+
+
+  
+}
+
+    </style>
+</head>
+<body>
+    <div class="heading heading-started"><h1>Started</h1></div>
+    <section class="page-contain tasks-started"></section>
+    <div class="heading heading-next"><h1>Next</h1></div>
+    <section class="page-contain tasks-next"></section>
+    <div class="heading heading-backlog"><h1>Backlog</h1></div>
+    <section class="page-contain tasks-backlog"></section>
+
+
+    <script>
+
+    function UTC(date) {
+        return new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()); 
+    }
+
+    const template = ({ id, description, project, tags = [], urgency, start = null }) => `
+                        <a href="#" class="data-card ${tags.join(' ')} ${start && 'started'}">
+                        <h1>#${id}: ${description}</h1>
+                            <h3>URGENCY: ${Math.round(urgency)}</h3>
+                            <h4>${project || ''}</h4>
+                            <p class="tags">
+                                ${tags.map(t => `<span class="tag tag-${t}">${t}</span>`).join(' ')}
+                            </p>
+                        </a>`;
+    
+    const url = new URL(window.location.href);
+    url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
+    url.searchParams.set(
+        'token',
+        'Es6I7jxAEIvgVUlSbjoomYy4rYT7byajSKbnW9zI9MktIenWvRzOtq7zsOKFApPm'
+    );
+
+    let socket = new WebSocket(url.toString());
+
+    socket.onmessage = (event) => process(JSON.parse(event.data.replaceAll('\n', '')));
+
+    function process(tasks) {
+        console.log('New processing')
+        const tasksSorted = tasks
+            .filter((task) => task.status === 'pending')
+            .map(task => {
+                const dateTimeAttributes = ['wait', 'due', 'entry', 'modified', 'scheduled', 'start'];
+
+                dateTimeAttributes.forEach((attribute) => {
+                    if (task[attribute]) {
+                        task[attribute] = new Date(
+                            task[attribute].replace(
+                                /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2}).*/,
+                                '$1-$2-$3 $4:$5:$6'
+                            )
+                        );
+                    }
+                });
+
+                return task;
+            })
+            .filter(({ wait = null }) => !wait || wait < UTC(new Date()))
+            .filter(({ id, depends = [] }) => {
+                return !depends.reduce(
+                    (acc, taskUuid) => {
+                        if (acc) {
+                            return acc;
+                        }
+
+                        const dependsOnTask = tasks.find(({ uuid = null }) => uuid === taskUuid)
+
+                        if (dependsOnTask) {
+                            return dependsOnTask.status === 'pending';
+                        }
+
+                        return acc;
+                    },
+                    false
+                );
+            })
+            .sort((a, b) => {
+                const startA = a.start && a.start.getTime();
+                const startB = b.start && b.start.getTime();
+
+                if (startA && startB) {
+                    return b.urgency - a.urgency;
+                }
+
+                if (startA) {
+                    return -1 * startA;
+                }
+
+                if (startB) {
+                    return startB;
+                }
+
+                return b.urgency - a.urgency;
+            });
+
+        const toHtml = (tasks) => tasks.map(template).join('');
+
+        const tasksStarted = tasksSorted.filter(({ start = null }) => start);
+        const tasksNext = tasksSorted.filter(({ tags = [], start = null }) => !start && tags.indexOf('next') !== -1);
+        const tasksBacklog = tasksSorted.filter(({ tags = [], start = null }) => !start && tags.indexOf('next') === -1).slice(0, 7)
+
+        document.querySelector('.heading-started').style.display = tasksStarted.length === 0 ? 'none' : 'block';
+        document.querySelector('.heading-next').style.display = tasksNext.length === 0 ? 'none' : 'block';
+        document.querySelector('.heading-backlog').style.display = tasksBacklog.length === 0 ? 'none' : 'block';
+
+        document.querySelector('.tasks-started').innerHTML = toHtml(tasksStarted);
+        document.querySelector('.tasks-next').innerHTML = toHtml(tasksNext);
+        document.querySelector('.tasks-backlog').innerHTML = toHtml(tasksBacklog);
+    }
+    </script>
+</body>
+</html>
